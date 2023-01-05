@@ -1,0 +1,52 @@
+variable "api_token" {}
+
+terraform {
+    required_providers {
+        proxmox = {
+            source = "telmate/proxmox"
+            version = "2.9.11"
+    }
+  }
+}
+
+provider "proxmox" {
+    pm_api_url      = "https://{{pve_ip}}/api2/json"
+    pm_user         = "{{terraform_user}}"
+    pm_api_token_id = "{{terraform_user}}@pve!{{terraform_user}}"
+    pm_api_token_secret = "${var.api_token}"
+}
+
+{% for role, cts in hosts.items() -%}
+    {# Ignore the PVE entry because we don't need to build that one #}
+    {% if role != 'pve' -%}
+        {%- for host in cts -%}
+resource "proxmox_lxc" "{{host.name}}" {
+    hostname = "{{host.name}}"
+    target_node = "{{pve_node}}"
+# TODO: configure ostemplate automatically based on how PVE is configured
+    ostemplate = "local:vztmpl/{{host.image}}.tar.gz"
+    unprivileged = true
+
+    {{ 'memory = "'  ~ host.ram ~ '"' if host.ram is defined }}
+    start = "true"
+    onboot = "true"
+
+    rootfs {
+# TODO: configure storage automatically based on how PVE is configured
+        storage = "local-lvm"
+        size = "{{ host.size if host.size is defined else "8G"}}"
+    }
+
+    network {
+        name = "eth0"
+        bridge = "vmbr0"
+        {{ 'ip = "' ~ host.ip ~ "/" ~ host.cidr ~ '"' if host.ip is defined }}
+        {{ 'gw = "' ~ host.gw ~ '"'                  if host.ip is defined }}
+    }
+
+    ssh_public_keys = "{{ansible_pubkey}}"
+}
+        {%- endfor %}
+    {%- endif %}
+{% endfor %}
+

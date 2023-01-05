@@ -1,0 +1,11 @@
+imports:
+  pve-nag-buster: ./roles/pve/files
+
+git module pve-nag-buster:
+  url: https://github.com/foundObjects/pve-nag-buster
+  move:
+    install.sh: pve-nag-buster
+  pick: pve-nag-buster
+  executable: pve-nag-buster # abstract: Persistent license nag removal for Proxmox VE 5.x+
+  rev: 2228634e9215dc08a28ca4249ecfed13ed094220
+

@@ -1,0 +1,15 @@
+--- # vim: ft=yaml.ansible
+
+all:
+  children:
+  {%- for role, hosts in hosts.items() %}
+    {{role}}:
+      hosts:
+    {%- for host in hosts %}
+      {%- if host.ip is defined %}
+        {{host.name}}:
+          ansible_host: {{host.ip}}
+      {%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+

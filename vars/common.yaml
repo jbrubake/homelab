@@ -1,0 +1,6 @@
+# These variables may be overriden as desired
+#
+
+ansible_user: ansible
+terraform_user: terraform
+

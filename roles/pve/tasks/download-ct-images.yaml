@@ -1,0 +1,14 @@
+--- # vim: ft=yaml.ansible
+
+- name: Get {{item}} URL and image name
+  ansible.builtin.script: files/getimgurl {{item}}
+  register: result
+  changed_when: false
+
+- name: Download {{item}}
+  become: yes
+  become_method: sudo
+  ansible.builtin.get_url:
+    url: "{{result.stdout_lines[0]}}"
+    dest: "{{ct_image_dir}}/{{result.stdout_lines[1]}}"
+

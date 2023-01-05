@@ -1,0 +1,54 @@
+packer {
+  required_plugins {
+    lxc = {
+      version = ">= 1.0.0"
+      source  = "github.com/hashicorp/lxc"
+    }
+  }
+}
+
+source "lxc" "{{name}}" {
+    template_name = "download"
+    template_parameters = ["-d", "{{distro}}", "-r", "{{release}}", "-a", "{{arch}}"]
+
+    config_file = "{{lxc_conf}}"
+    output_directory = "{{image_dir}}"
+}
+
+build {
+    name = "img"
+    sources = ["lxc.{{name}}"]
+
+    # Bootstrap configuraiton
+    #
+    # The script has to be uploaded and then run as that is
+    # the only way to pass command line arguments
+    provisioner "file" {
+        source = "{{bootstrap}}"
+        destination = "/tmp/bootstrap"
+    }
+    provisioner "shell" {
+        inline = ["sh /tmp/bootstrap -k '{{ansible_pubkey}}' -u {{ansible_user}} -d {{distro}}"]
+    }
+    provisioner "shell" {
+        inline = ["rm /tmp/bootstrap"]
+    }
+
+    {% if role is defined %}
+    # Role configuration
+    #
+    # The script has to be uploaded and then run as that is
+    # the only way to pass command line arguments
+    provisioner "file" {
+        source = "{{role_config}}"
+        destination = "/tmp/role-config"
+    }
+    provisioner "shell" {
+        inline = ["sh /tmp/role-config -u {{role_user}} -d {{distro}}"]
+    }
+    provisioner "shell" {
+        inline = ["rm /tmp/role-config"]
+    }
+    {% endif %}
+}
+

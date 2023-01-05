@@ -1,0 +1,21 @@
+--- # vim: ft=yaml.ansible
+
+- name: Check for PVE "{{name}}" group
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pvesh get /access/groups/{{name}} -q
+  register: group_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create PVE "{{name}}" group
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pveum group add {{name}} -comment "{{comment|default('')}}"
+  when: group_exists.rc != 0
+
+- name: Set PVE "{{name}}" group permissions
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pveum acl modify / -group {{name}} -role {{role|default('PVEVMUser')}}
+

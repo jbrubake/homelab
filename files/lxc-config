@@ -1,0 +1,9 @@
+lxc.include = /etc/lxc/default.conf
+
+# This configuration is required to handle a bug with
+# exporting non-privileged containers using Packer
+lxc.idmap = u 0 1000 1
+lxc.idmap = u 1 100001 65535
+lxc.idmap = g 0 1000 1
+lxc.idmap = g 1 100001 65535
+

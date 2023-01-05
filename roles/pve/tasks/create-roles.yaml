@@ -1,0 +1,16 @@
+--- # vim: ft=yaml.ansible
+
+- name: Check for PVE role "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pvesh get /access/roles/{{name}} -q
+  register: role_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create PVE role "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pveum role add {{name}} -privs "{{privs}}"
+  when: role_exists.rc != 0
+

@@ -1,0 +1,32 @@
+--- # vim: ft=yaml.ansible
+
+- name: Install firewalld
+  become: yes
+  become_method: sudo
+  package:
+    name: firewalld
+    state: present
+
+- name: Redirect 443/tcp to 8006/tcp
+  become: yes
+  become_method: sudo
+  ansible.posix.firewalld:
+    port_forward:
+      - port: 443
+        proto: tcp
+        toport: 8006
+    zone: public
+    permanent: yes
+    immediate: yes
+    state: enabled
+
+- name: Disable 8006/tcp on public interface
+  become: yes
+  become_method: sudo
+  ansible.posix.firewalld:
+    port: 8006/tcp
+    zone: public
+    permanent: yes
+    immediate: yes
+    state: disabled
+

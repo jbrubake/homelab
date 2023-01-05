@@ -1,0 +1,173 @@
+#!/bin/sh
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+# Copyright 2022 Jeremy Brubaker <jbru362@gmail.com>
+#
+# abstract: prepare a system to be configured by Ansible
+#
+# Documentation {{{1
+#
+VERSION='1.0'
+
+print_help() {
+    cat <<EOF
+Usage: bootstrap [OPTION]
+Prepare a system to be configured by Ansible
+
+ -k [pubkey]       SSH public key
+ -u [user]         user to create
+ -d [distro]       what distribution is the system (default: alpine)
+                   Supports:
+                     alpine
+                     pve
+                     rockylinux
+ -v                display version information
+ -h                display this help
+EOF
+
+}
+print_version() {
+    cat <<END >&2
+$0 $VERSION
+Copyright (C) 2022 Orion Arts
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Written by Jeremy Brubaker.
+END
+}
+
+# Configuration {{{1
+clr_msg="\033[32;1m"
+clr_rst="\033[0m"
+
+# Defaults
+#
+user="ansible"
+distro="alpine"
+
+# Process options {{{1
+#
+while getopts "k:u:r:d:vh" opt; do
+    case $opt in
+        k) pubkey="$OPTARG" ;;
+        u) user="$OPTARG"   ;;
+        d) distro="$OPTARG" ;;
+        v) print_version; exit ;;
+        h) print_help; exit ;;
+        *) print_help; exit ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+[ -z "$pubkey" ] && \
+    printf "No SSH key provided\n" >&2 && exit 1
+
+# Bootstrap {{{1
+#
+install_pkgs() { # {{{2
+    distro="$1"
+
+    printf "${clr_msg}Upgrade and install necessary packages...\n${clr_rst}"
+
+    case "$distro" in
+        alpine)
+            apk update
+            apk add sudo
+            apk add openssh
+            rc-update add sshd
+            service sshd start
+            ;;
+        pve)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get -y update
+            apt-get -yq -o Dpkg::Options::='--force-confdef' upgrade
+            apt-get -y install sudo
+            unset DEBIAN_FRONTEND
+            ;;
+        rockylinux)
+            dnf -y upgrade
+            dnf -y install openssh-server
+            systemctl enable --now sshd
+            ;;
+        *)
+            printf "Distro $distro is not supported. Exiting\n" >&2
+            ;;
+    esac
+}
+
+add_user() { # {{{2
+    distro="$1"
+    user="$2"
+
+    case "$distro" in
+        alpine)
+            adduser="adduser -Ds /bin/ash $user"
+            ;;
+        pve | rockylinux)
+            adduser="useradd --create-home $user"
+            ;;
+        *)
+            printf "Distro $distro is not supported. Exiting\n" >&2
+            ;;
+    esac
+
+    if ! getent passwd "$user" >/dev/null; then
+        printf "${clr_msg}Create user '$user'...\n${clr_rst}"
+        $adduser
+    fi
+
+}
+
+configure_ssh() { # {{{2
+    user="$1"
+    pubkey="$2"
+
+    home=$(getent passwd $user | cut -d: -f6)
+    if ! grep -q "$pubkey" "$home/.ssh/authorized_keys" 2>/dev/null; then 
+        printf "${clr_msg}Enable SSH keybased authentication for '$user'...\n${clr_rst}"
+        su - $user <<END
+            umask 077
+            mkdir -p .ssh
+            touch .ssh/authorized_keys
+            echo "$pubkey" >> .ssh/authorized_keys
+END
+    fi
+}
+
+configure_sudo() { # {{{2
+    user="$1"
+    if ! grep -q "$user ALL=(ALL) NOPASSWD:ALL" /etc/sudoers.d/$user 2>/dev/null; then
+        printf "${clr_msg}Enable passwordless sudo for '$user'...\n${clr_rst}"
+        echo "$user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$user
+        chmod 0440 /etc/sudoers.d/$user
+    fi
+}
+
+# Main {{{1
+#
+printf "${clr_msg}Pause until the network is up${clr_rst}"
+while ! ping -c1 1.1.1.1 >/dev/null 2>&1; do
+    printf "."
+    sleep 1
+done
+echo
+
+install_pkgs   "$distro"
+add_user       "$distro" "$user"
+configure_ssh            "$user" "$pubkey"
+configure_sudo           "$user"
+

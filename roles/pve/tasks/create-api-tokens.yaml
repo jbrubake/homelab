@@ -1,0 +1,25 @@
+--- # vim: ft=yaml.ansible
+
+- name: Check for existing API token for PVE user "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pvesh get /access/users/{{name}}@{{realm}}/token/{{name}} -q
+  register: has_token
+  changed_when: false
+  failed_when: false
+
+- name: Generate API token for PVE user "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.shell: pvesh create /access/users/{{name}}@{{realm}}/token/{{name}} -privsep 0 --noborder 1 | tail -1 | awk '{print $2}'
+  register: token
+  when: has_token.rc|default('') != 0
+
+- name: Save API token for PVE user "{{name}}"
+  delegate_to: localhost
+  copy:
+    content: api_token = "{{token.stdout}}"
+    dest: "{{dest}}"
+    mode: 0600
+  when: has_token.rc|default('') != 0
+

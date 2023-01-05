@@ -1,0 +1,21 @@
+--- # vim: ft=yaml.ansible
+
+- name: Check for PVE user "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pvesh get /access/users/{{name}}@{{realm}} -q
+  register: user_exists
+  changed_when: false
+  failed_when: false
+
+- name: Create PVE user "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pveum user add {{name}}@{{realm|default('pve')}} -comment "{{comment | default('')}}"
+  when: user_exists.rc != 0
+
+- name: Add PVE user "{{name}}" to group "{{name}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pveum user modify {{name}}@{{realm|default('pve')}} -group {{name}}
+

@@ -1,0 +1,110 @@
+--- # vim: ft=yaml.ansible
+
+# Bootstrap {{{1
+#
+# tags = bootstrap
+#
+- name: Change Web GUI port
+  include_tasks:
+    file: tasks/change-webgui-port.yaml
+    apply:
+      tags: bootstrap
+  tags: bootstrap
+
+- name: Create Terraform account
+  include_tasks:
+    file: tasks/create-service-account.yaml
+    apply:
+      tags: bootstrap
+  tags: bootstrap
+  loop: "{{tf_user}}"
+  vars:
+    api_key: "{{api_token}}"
+
+- name: Create CT image directory
+  file:
+    path: "{{ct_image_dir}}"
+    state: directory
+  tags: bootstrap
+
+# Manage Terraform service account API key {{{1
+#
+# tags = api-token [delete-api-token]
+#
+# NOTE: 'tags: never' is used because these tasks should *only* be run when
+# specifically requested
+#
+# NOTE: Delete the API token just in case the local key was deleted
+#
+- name: Delete API token for TF user "{{terraform_user}}"
+  become: yes
+  become_method: sudo
+  ansible.builtin.command: pvesh delete /access/users/{{terraform_user}}@pve/token/{{terraform_user}} -q
+  tags:
+    - api-token
+    - delete-api-token
+    - never
+  failed_when: false
+
+- name: Create API token for user "{{terraform_user}}"
+  include_tasks:
+    file: tasks/create-api-tokens.yaml
+    apply:
+      tags:
+        - api-token
+  tags:
+    - api-token
+    - never
+  vars:
+    name: "{{terraform_user}}"
+    realm: pve
+    dest: "{{api_token}}"
+
+# Full configuration {{{1
+#
+
+- name: Remove subscription nag screen
+  become: yes
+  become_method: sudo
+  ansible.builtin.script: files/pve-nag-buster
+  args:
+    creates: /usr/share/pve-nag-buster.sh
+
+- name: Download CT images
+  include_tasks: tasks/download-ct-images.yaml
+  loop: "{{pve.ct_images}}"
+  when: pve.ct_images is defined
+
+- name: Create service accounts
+  include_tasks: tasks/create-service-account.yaml
+  loop: "{{service_accounts}}"
+  vars:
+    api_key: "{{output_dir}}/apikey.{{item.name}}"
+  when: service_accounts is defined
+
+- name: Create PVE roles
+  include_tasks: tasks/create-roles.yaml
+  loop: "{{pve.roles}}"
+  when: pve.roles is defined
+  vars:
+    name: "{{item.name}}"
+    privs: "{{item.privs|default(pve_default_privs)}}"
+
+- name: Create PVE groups
+  include_tasks: tasks/create-groups.yaml
+  loop: "{{pve.groups}}"
+  when: pve.groups is defined
+  vars:
+    name: "{{item.name}}"
+    role: "{{item.role}}"
+    comment: "{{item.comment|default('')}}"
+
+- name: Create PVE users
+  include_tasks: tasks/create-users.yaml
+  loop: "{{pve.users}}"
+  when: pve.users is defined
+  vars:
+    name: "{{item.name}}"
+    realm: "{{item.realm}}"
+    comment: "{{item.comment|default('')}}"
+

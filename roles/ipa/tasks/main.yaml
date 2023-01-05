@@ -1,0 +1,9 @@
+--- # vim: ft=yaml.ansible
+
+- name: Install FreeIP DNS package
+  become: yes
+  become_method: sudo
+  ansible.builtin.package:
+    name: freeipa-server-dns
+    state: present
+

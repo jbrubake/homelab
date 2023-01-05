@@ -1,0 +1,189 @@
+#!/bin/sh
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+# Copyright 2022 Jeremy Brubaker <jbru362@gmail.com>
+#
+# abstract: configure a Certificate Authority
+#
+# Documentation {{{1
+#
+VERSION='1.0'
+
+print_help() {
+    cat <<EOF
+Usage: caconfig
+Configure a Certificate Authority
+ -u [user]         user to create
+ -d [distro]       what distribution is the system (default: alpine)
+                   Supports:
+                     alpine
+                     pve
+                     rockylinux
+ -v                display version information
+ -h                display this help
+EOF
+
+}
+print_version() {
+    cat <<END >&2
+$0 $VERSION
+Copyright (C) 2022 Orion Arts
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+
+Written by Jeremy Brubaker.
+END
+}
+
+# Configuration {{{1
+clr_msg="\033[32;1m"
+clr_rst="\033[0m"
+
+# Defaults
+user="caadmin"
+distro="alpine"
+
+# Process options {{{1
+#
+while getopts "u:d:v" opt; do
+    case $opt in
+        u) user="$OPTARG"   ;;
+        d) distro="$OPTARG" ;;
+        v) print_version; exit ;;
+        *) print_help; exit ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+# Functions {{{1
+#
+get_easyrsa_url() { # {{{2
+    echo "https://github.com/OpenVPN/easy-rsa/releases/download/v3.1.1/EasyRSA-3.1.1.tgz"
+}
+
+install_pkgs() { # {{{2
+    distro="$1"
+
+    printf "${clr_msg}Upgrade and install necessary packages...\n${clr_rst}"
+
+    case "$distro" in
+        alpine)
+            apk add openssl
+            ;;
+        pve)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get -yq -o Dpkg::Options::='--force-confdef' upgrade
+            apt-get -y install openssl
+            unset DEBIAN_FRONTEND
+            ;;
+        rockylinux)
+            dnf -y install openssl-server
+            ;;
+        *)
+            printf "Distro $distro is not supported. Exiting\n" >&2
+            ;;
+    esac
+}
+
+uninstall_pkgs() { # {{{2
+    distro="$1"
+
+    printf "${clr_msg}Remove unecessary packages...\n${clr_rst}"
+
+    case "$distro" in
+        alpine)
+            apk delete openssh
+            ;;
+        pve)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get -yq -o Dpkg::Options::='--force-confdef' upgrade
+            apt-get -y install openssh-server
+            unset DEBIAN_FRONTEND
+            ;;
+        rockylinux)
+            dnf -y install openssh-server
+            ;;
+        *)
+            printf "Distro $distro is not supported. Exiting\n" >&2
+            ;;
+    esac
+}
+
+add_user() { # {{{2
+    distro="$1"
+    user="$2"
+
+    case "$distro" in
+        alpine)
+            adduser="adduser -Ds /bin/ash $user"
+            ;;
+        pve | rockylinux)
+            adduser="useradd --create-home $user"
+            ;;
+        *)
+            printf "Distro $distro is not supported. Exiting\n" >&2
+            ;;
+    esac
+
+    if ! getent passwd "$user" >/dev/null; then
+        printf "${clr_msg}Create user '$user'...\n${clr_rst}"
+        $adduser
+    fi
+
+}
+
+configure_ca() { # {{{2
+    user="$1"
+
+    # TODO: Configure these elsewhere
+    easyrsa_counry="US"
+    easyrsa_province="Maryland"
+    easyrsa_city="Baltimore"
+    easyrsa_org="Orion Arts"
+    easyrsa_email="ca-admin@orionarts.io"
+
+    home=$(getent passwd $user | cut -d: -f6)
+    if [ ! -d "$home/easyrsa" ]; then
+        printf "${clr_msg}Install and initialize EasyRSA...\n${clr_rst}"
+        su - $user <<END
+        mkdir easyrsa
+        wget -qO- "$(get_easyrsa_url)" | tar zxvf - --strip-components=1 -C easyrsa
+        cd easyrsa
+        ./easyrsa init-pki
+        sed -e 's/^#.*set_var EASYRSA_REQ_COUNTRY.*/set_var EASYRSA_REQ_COUNTRY\t"$easyrsa_country"/' \
+            -e 's/^#.*set_var EASYRSA_REQ_PROVINCE.*/set_var EASYRSA_PROVINCE\t"$easyrsa_province"/' \
+            -e 's/^#.*set_var EASYRSA_REQ_CITY.*/set_var EASYRSA_CITY\t\t"$easyrsa_city"/' \
+            -e 's/^#.*set_var EASYRSA_REQ_ORG.*/set_var EASYRSA_REQ_ORG\t\t"$easyrsa_org"/' \
+            -e 's/^#.*set_var EASYRSA_REQ_EMAIL.*/set_var EASYRSA_REQ_EMAIL\t"$easyrsa_email"/' \
+            vars.example > pki/vars
+END
+    fi
+}
+
+# Main {{{1
+#
+printf "${clr_msg}Pause until the network is up${clr_rst}"
+while ! ping -c1 1.1.1.1 >/dev/null 2>&1; do
+    printf "."
+    sleep 1
+done
+echo
+
+install_pkgs   "$distro"
+uninstall_pkgs "$distro"
+add_user       "$distro" "$user"
+configure_ca             "$user"
+

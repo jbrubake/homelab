@@ -1,5 +1,9 @@
 --- # vim: ft=yaml.ansible
 
+# PVE API access
+# curl -k -H "Authorization: PVEAPIToken=terraform@pve!terraform=f5007257-850f-4aee-9af6-0c6c137040a6" \
+# https://192.168.122.94/api2/json/cluster/resources?type=vm
+
 # Bootstrap {{{1
 #
 # tags = bootstrap

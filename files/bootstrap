@@ -72,6 +72,7 @@ while getopts "k:u:r:d:vh" opt; do
     esac
 done
 shift $((OPTIND - 1))
+OPTIND=1
 
 [ -z "$pubkey" ] && \
     printf "No SSH key provided\n" >&2 && exit 1

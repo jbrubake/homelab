@@ -55,6 +55,7 @@ while getopts "a:t:h" opt; do
     esac
 done
 shift $((OPTIND - 1))
+OPTIND=1
 
 if [ $# -eq 0 ]; then
     printf "No distro-version provided\n\n" >&2
